@@ -1,9 +1,7 @@
 const std = @import("std");
 
 const c = @cImport({
-    @cInclude("errno.h");
     @cInclude("locale.h");
-    @cInclude("unistd.h");
     @cInclude("gpgme.h");
     @cDefine("SIZE", "4092");
 });
@@ -73,7 +71,7 @@ pub fn main() anyerror!void {
     if (err != c.GPG_ERR_NO_ERROR) return;
 
     // EXPORT AND GET PUBLIC KEY
-    err = c.gpgme_op_export(ceofcontext, null, 0, data);
+    err = c.gpgme_op_export(ceofcontext, "matt@silbernagel.dev", 0, data);
     if (err != c.GPG_ERR_NO_ERROR) return;
 
     var read_bytes = c.gpgme_data_seek(data, 0, c.SEEK_END);
@@ -96,25 +94,26 @@ pub fn main() anyerror!void {
 
     // SEARCH FOR A KEY
     var key: c.gpgme_key_t = undefined;
-    err = c.gpgme_op_keylist_start(ceofcontext, null, 0);
+    err = c.gpgme_op_keylist_start(ceofcontext, "garbage", 0);
     while (err == c.GPG_ERR_NO_ERROR) {
         err = c.gpgme_op_keylist_next(ceofcontext, &key);
         if (err != c.GPG_ERR_NO_ERROR) break;
 
         var res = c.gpgme_key_get_string_attr(key, c.gpgme_attr_t.GPGME_ATTR_FPR, null, 0);
+        // make sure that the key is for the correct email
         std.log.info("fingerprint {s}", .{res});
 
         // ENCRYPT SOME DATA
         var cipher: c.gpgme_data_t = undefined;
         err = c.gpgme_data_new(&cipher);
         var to_encrypt: c.gpgme_data_t = undefined;
-
-        err = c.gpgme_data_new_from_mem(&to_encrypt, "text\n", 5, 0);
+        var txt: [:0]const u8 = "info: fingerprint matt@silbernagel.dev info: DATA: -----BEGIN PGP MESSAGE-----";
+        err = c.gpgme_data_new_from_mem(&to_encrypt, txt, txt.len, 0);
         var keys = [_]c.gpgme_key_t{ key, null };
 
         _ = c.gpgme_op_encrypt(ceofcontext, &keys, c.gpgme_encrypt_flags_t.GPGME_ENCRYPT_ALWAYS_TRUST, to_encrypt, cipher);
 
-        const result = c.gpgme_op_encrypt_result(ceofcontext);
+        _ = c.gpgme_op_encrypt_result(ceofcontext);
 
         // READ THE ENCRYPTED DATA
         var d: [c.SIZE]u8 = undefined;
